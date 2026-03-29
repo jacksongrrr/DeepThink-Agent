@@ -1,6 +1,6 @@
 # DeepThink Agent
 
-流程：**Chat**（`deepseek-chat`）生成 **6～12 条**思考路径，每条含短标题 `path` 与「简洁但要详细」的阐明 `detail`；随后对**每条路径各调用一次** **R1**（`deepseek-reasoner`）；最后把所有路径上的 R1 推理与小结拼成上下文，再由 **Chat** 输出**唯一综合回答**。本地 Web 支持：
+**Chat**（`deepseek-chat`）生成 **6～12 条**思考路径，每条含短标题 `path` 与「简洁但要详细」的阐明 `detail`；随后对**每条路径各调用一次** **R1**（`deepseek-reasoner`）；最后把所有路径上的 R1 推理与小结拼成上下文，再由 **Chat** 输出**唯一综合回答**。本地 Web 支持：
 
 - **对比**：「单次纯 R1」与「多路径 × 多 R1 + Chat 综合」并排  
 - **仅技术**：完整多阶段管线  
@@ -45,15 +45,6 @@ ruff format src tests
 pytest
 ```
 
-## 提示词设计要点
-
-- **角色分离**：路径生成、R1 基线、R1+路径 使用独立 `system` 提示，避免指令混写导致权重不清。  
-- **分隔符**：用户问题与候选路径分别包在 `<user_question>`、`<candidate_thinking_paths>` 中，降低串扰与注入面。  
-- **可解析输出**：Chat 阶段使用 `response_format: json_object`，并在 system 中写死 JSON 契约（`paths[].path` / `paths[].reason`）。  
-- **R1 参数**：不对 `deepseek-reasoner` 传入其不支持的采样参数（如 `temperature`）。  
-
-详见 `src/deepthink_agent/prompts.py` 与 `docs/ARCHITECTURE.md`。
-
 ## 目录说明
 
 | 路径 | 说明 |
@@ -67,12 +58,3 @@ pytest
 ## 许可证
 
 MIT，见 `LICENSE`。
-
-## 自检清单（维护者）
-
-- [x] 无核心业务 TODO / 空实现  
-- [x] README 可从零跑通主流程（需有效 API Key）  
-- [x] `.env.example` 完整  
-- [x] 测试可执行（健康检查 + 提示词/解析契约）  
-- [x] CI：Ruff + Pytest  
-- [x] 文档与代码结构一致（`docs/ARCHITECTURE.md`）  
