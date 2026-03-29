@@ -2,7 +2,11 @@ import json
 
 import pytest
 
-from deepthink_agent.services import DeepSeekPipelineError, _parse_paths_payload
+from deepthink_agent.services import (
+    DeepSeekPipelineError,
+    _parse_classification_payload,
+    _parse_paths_payload,
+)
 
 
 def test_parse_paths_payload_detail_ok():
@@ -34,3 +38,19 @@ def test_parse_paths_payload_reason_fallback():
 def test_parse_paths_payload_invalid():
     with pytest.raises(DeepSeekPipelineError):
         _parse_paths_payload("not json")
+
+
+def test_parse_classification_payload_ok():
+    raw = json.dumps(
+        {
+            "domain_type": "决策",
+            "difficulty": "中",
+            "subcategory": "资源约束",
+            "structure_type": "开放",
+            "thinking_stance": "先列假设再验证",
+        },
+        ensure_ascii=False,
+    )
+    d = _parse_classification_payload(raw)
+    assert d["difficulty"] == "中"
+    assert "thinking_stance" in d

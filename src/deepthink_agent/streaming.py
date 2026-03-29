@@ -10,7 +10,11 @@ from openai import APIConnectionError, APIError, AsyncOpenAI, RateLimitError
 
 from deepthink_agent import prompts
 from deepthink_agent.config import Settings
-from deepthink_agent.services import DeepSeekPipelineError, generate_thinking_paths
+from deepthink_agent.services import (
+    DeepSeekPipelineError,
+    classify_problem,
+    generate_thinking_paths,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -267,10 +271,12 @@ async def _iter_tech_from_paths_task(
     client: AsyncOpenAI,
     settings: Settings,
     q: str,
-    paths_task: asyncio.Task,
 ) -> AsyncIterator[dict[str, Any]]:
     yield {"type": "phase", "branch": "tech", "phase": "paths_loading"}
-    paths = await paths_task
+    yield {"type": "phase", "branch": "tech", "phase": "classifying"}
+    profile = await classify_problem(client, settings, q)
+    yield {"type": "classification", "branch": "tech", "profile": profile}
+    paths = await generate_thinking_paths(client, settings, q, profile)
     if not paths:
         yield {"type": "error", "message": "未生成任何有效思考路径"}
         return
@@ -320,10 +326,9 @@ async def stream_events_tech_only(
     yield {
         "type": "branch",
         "branch": "tech",
-        "title": "技术：多路径 × 并行 R1 + Chat 综合",
+        "title": "技术：分类 → 多路径 × 并行 R1 + Chat 综合",
     }
-    paths_task = asyncio.create_task(generate_thinking_paths(client, settings, q))
-    async for ev in _iter_tech_from_paths_task(client, settings, q, paths_task):
+    async for ev in _iter_tech_from_paths_task(client, settings, q):
         yield ev
     yield {"type": "done"}
 
@@ -344,12 +349,11 @@ async def stream_events_compare(
     yield {
         "type": "branch",
         "branch": "tech",
-        "title": "技术：多路径 × 并行 R1 + Chat 综合",
+        "title": "技术：分类 → 多路径 × 并行 R1 + Chat 综合",
     }
-    paths_task = asyncio.create_task(generate_thinking_paths(client, settings, q))
     merged = merge_async_dict_streams(
         _iter_baseline_compare_stream(client, settings, q),
-        _iter_tech_from_paths_task(client, settings, q, paths_task),
+        _iter_tech_from_paths_task(client, settings, q),
     )
     async for ev in merged:
         yield ev

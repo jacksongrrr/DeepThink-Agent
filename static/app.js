@@ -76,8 +76,23 @@ const state = {
 
 function defaultBranchTitle(branch) {
   if (branch === "baseline") return "纯 R1（无思考路径预处理）";
-  if (branch === "tech") return "技术：多路径 × 并行 R1 + Chat 综合";
+  if (branch === "tech") return "技术：分类 → 多路径 × 并行 R1 + Chat 综合";
   return branch;
+}
+
+function formatProfileMd(profile) {
+  if (!profile || typeof profile !== "object") return "";
+  const keys = ["domain_type", "difficulty", "subcategory", "structure_type", "thinking_stance"];
+  const lines = [];
+  for (const k of keys) {
+    const v = profile[k];
+    if (v) lines.push(`- **${k}**：${v}`);
+  }
+  for (const [k, v] of Object.entries(profile)) {
+    if (keys.includes(k) || !v) continue;
+    lines.push(`- **${k}**：${v}`);
+  }
+  return lines.join("\n") || "（无）";
 }
 
 /**
@@ -103,6 +118,7 @@ function defaultBranchTitle(branch) {
  * @property {HTMLElement} answerLabel
  * @property {HTMLElement} synthesisBlock
  * @property {HTMLElement} synthAnswerEl
+ * @property {HTMLElement} classifyEl
  */
 
 function roundKey(branch, index) {
@@ -169,6 +185,13 @@ function ensureColumn(branch, title) {
     thinkCaret.textContent = open ? "▶" : "▼";
   });
 
+  if (branch === "baseline") {
+    thinkSection.classList.add("ds-think-collapsed");
+    thinkCaret.textContent = "▶";
+    thinkHead.setAttribute("aria-expanded", "false");
+  }
+
+  const classifyEl = el("div", { className: "ds-classification-wrap hidden" });
   const answerLabel = el("div", { className: "ds-answer-label", text: "回答" });
   const answerEl = el("div", { className: "ds-answer markdown-body" });
   const pathsEl = el("div", { className: "ds-paths-wrap hidden" });
@@ -183,6 +206,7 @@ function ensureColumn(branch, title) {
 
   const card = el("article", { className: "ds-card", "data-branch": branch });
   card.appendChild(el("h2", { className: "ds-card-title", text: title }));
+  card.appendChild(classifyEl);
   card.appendChild(pathsEl);
   card.appendChild(roundsEl);
   card.appendChild(thinkSection);
@@ -195,6 +219,7 @@ function ensureColumn(branch, title) {
     answerLabel.style.display = "none";
     answerEl.style.display = "none";
   } else {
+    classifyEl.style.display = "none";
     roundsEl.style.display = "none";
     synthesisBlock.classList.add("hidden");
   }
@@ -213,6 +238,7 @@ function ensureColumn(branch, title) {
     answerLabel,
     synthesisBlock,
     synthAnswerEl,
+    classifyEl,
   };
   state.columns.set(branch, ui);
   return ui;
@@ -224,33 +250,26 @@ function createPathRound(branch, pathIndex, pathTitle, detail) {
   wrap.appendChild(
     el("div", { className: "ds-path-round-title", text: `路径 ${pathIndex + 1}：${pathTitle}` }),
   );
+
+  const detailsRoot = el("details", { className: "ds-details ds-details-collapsed" });
+  const sum = el("summary", {
+    className: "ds-details-summary",
+    text: "查看：路径阐明与 R1 推理过程",
+  });
+  detailsRoot.appendChild(sum);
+
   if (detail) {
     const dd = el("div", { className: "ds-path-round-detail markdown-body" });
     dd.innerHTML = safeMd(detail);
-    wrap.appendChild(dd);
+    detailsRoot.appendChild(dd);
   }
 
-  const subThink = el("section", { className: "ds-think ds-think-sub" });
-  const sl = el("span", { className: "ds-think-label", text: "R1 深度思考" });
-  const sc = el("span", { className: "ds-think-caret", text: "▼" });
-  const sh = el("button", { type: "button", className: "ds-think-head", "aria-expanded": "true" });
-  sh.appendChild(sl);
-  sh.appendChild(
-    el("span", { className: "ds-think-meta" }, [
-      el("span", { className: "ds-think-pulse", text: "" }),
-      sc,
-    ]),
-  );
-  const sb = el("div", { className: "ds-think-body markdown-body" });
-  subThink.appendChild(sh);
-  subThink.appendChild(sb);
-  sh.addEventListener("click", () => {
-    const open = subThink.classList.toggle("ds-think-collapsed");
-    sh.setAttribute("aria-expanded", open ? "false" : "true");
-    sc.textContent = open ? "▶" : "▼";
-  });
+  const thinkLabel = el("div", { className: "ds-inline-think-label", text: "R1 推理（CoT）" });
+  const sb = el("div", { className: "ds-think-body markdown-body ds-think-body-nested" });
+  detailsRoot.appendChild(thinkLabel);
+  detailsRoot.appendChild(sb);
 
-  wrap.appendChild(subThink);
+  wrap.appendChild(detailsRoot);
   wrap.appendChild(el("div", { className: "ds-sub-answer-label", text: "该路径 R1 小结" }));
   const subAns = el("div", { className: "ds-answer ds-answer-sub markdown-body" });
   wrap.appendChild(subAns);
@@ -259,19 +278,19 @@ function createPathRound(branch, pathIndex, pathTitle, detail) {
 
   const pr = {
     wrap,
+    detailsRoot,
     thinkBody: sb,
     answerEl: subAns,
-    thinkSection: subThink,
-    thinkLabel: sl,
-    thinkCaret: sc,
+    thinkLabel,
+    thinkInlineLabel: thinkLabel,
   };
   state.pathRounds.set(roundKey(branch, pathIndex), pr);
   return pr;
 }
 
 function setSubThinkStreaming(pr, on) {
-  pr.thinkSection.classList.toggle("ds-think-streaming", on);
-  pr.thinkLabel.textContent = on ? "R1 思考中…" : "已深度思考";
+  if (pr.detailsRoot) pr.detailsRoot.classList.toggle("ds-path-details-streaming", on);
+  if (pr.thinkLabel) pr.thinkLabel.textContent = on ? "R1 推理（流式输出中…）" : "R1 推理（CoT）";
 }
 
 function renderPathsInto(container, paths) {
@@ -289,8 +308,15 @@ function renderPathsInto(container, paths) {
     det.innerHTML = safeMd(detail || "");
     ul.appendChild(el("li", {}, [line, det]));
   });
-  container.appendChild(el("div", { className: "ds-paths-title", text: "思考路径（Chat 生成）" }));
-  container.appendChild(ul);
+  const inner = el("div", { className: "ds-paths-inner" });
+  inner.appendChild(el("div", { className: "ds-paths-title", text: "思考路径（Chat 生成）" }));
+  inner.appendChild(ul);
+  const det = el("details", { className: "ds-details ds-details-collapsed" });
+  det.appendChild(
+    el("summary", { className: "ds-details-summary", text: "思考路径规划（默认折叠，点击展开）" }),
+  );
+  det.appendChild(inner);
+  container.appendChild(det);
 }
 
 function setThinkStreaming(ui, on) {
@@ -321,9 +347,37 @@ function handleEvent(obj) {
       ui.pathsEl.classList.remove("hidden");
       ui.pathsEl.innerHTML = "";
       ui.pathsEl.appendChild(
-        el("div", { className: "ds-paths-skel", text: "正在生成多条思考路径（含详细阐明）…" }),
+        el("div", { className: "ds-paths-skel", text: "准备分类与路径生成…" }),
       );
     }
+    if (obj.phase === "classifying") {
+      ui.pathsEl.classList.remove("hidden");
+      let sk = ui.pathsEl.querySelector(".ds-paths-skel");
+      if (!sk) {
+        ui.pathsEl.innerHTML = "";
+        sk = el("div", { className: "ds-paths-skel", text: "" });
+        ui.pathsEl.appendChild(sk);
+      }
+      sk.textContent = "正在进行问题分类…";
+    }
+    return;
+  }
+  if (t === "classification") {
+    const ui =
+      state.columns.get(obj.branch) ?? ensureColumn(obj.branch, defaultBranchTitle(obj.branch));
+    ui.classifyEl.classList.remove("hidden");
+    ui.classifyEl.innerHTML = "";
+    const det = el("details", { className: "ds-details ds-details-collapsed" });
+    det.appendChild(
+      el("summary", {
+        className: "ds-details-summary",
+        text: "问题分类画像（路径生成前置，默认折叠）",
+      }),
+    );
+    const body = el("div", { className: "markdown-body" });
+    body.innerHTML = safeMd(formatProfileMd(obj.profile));
+    det.appendChild(body);
+    ui.classifyEl.appendChild(det);
     return;
   }
   if (t === "paths") {
@@ -346,7 +400,8 @@ function handleEvent(obj) {
       setSubThinkStreaming(pr, false);
       const tk = mdKey(obj.branch, "think", obj.path_index);
       if (!(mdBuffers.get(tk) || "").trim()) {
-        pr.thinkSection.style.display = "none";
+        if (pr.thinkBody) pr.thinkBody.style.display = "none";
+        if (pr.thinkInlineLabel) pr.thinkInlineLabel.style.display = "none";
       }
     }
     return;
@@ -385,6 +440,7 @@ function handleEvent(obj) {
     const ui =
       state.columns.get(obj.branch) ?? ensureColumn(obj.branch, defaultBranchTitle(obj.branch));
     ui.synthesisBlock.classList.remove("hidden");
+    ui.root.classList.add("ds-tech-results-priority");
     mdBuffers.delete(mdKey(obj.branch, "synth", null));
     ui.synthAnswerEl.innerHTML = "";
     return;

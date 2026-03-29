@@ -19,6 +19,14 @@ from deepthink_agent.models_api import (
 
 logger = logging.getLogger(__name__)
 
+CLASSIFIER_KEYS = (
+    "domain_type",
+    "difficulty",
+    "subcategory",
+    "structure_type",
+    "thinking_stance",
+)
+
 
 class DeepSeekPipelineError(Exception):
     """封装上游 API 或解析失败，供 HTTP 层映射。"""
@@ -37,6 +45,24 @@ def _extract_reasoner_parts(message: Any) -> tuple[str | None, str]:
     if reasoning is not None:
         reasoning = str(reasoning).strip() or None
     return reasoning, answer
+
+
+def _parse_classification_payload(raw: str) -> dict[str, str]:
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError as e:
+        raise DeepSeekPipelineError(f"问题分类 JSON 解析失败：{e}") from e
+    if not isinstance(data, dict):
+        raise DeepSeekPipelineError("问题分类响应必须是 JSON 对象")
+    out: dict[str, str] = {}
+    for k in CLASSIFIER_KEYS:
+        v = data.get(k)
+        if v is None:
+            continue
+        if not isinstance(v, str):
+            raise DeepSeekPipelineError(f"分类字段 {k} 必须是字符串")
+        out[k] = v.strip()
+    return out
 
 
 def _parse_paths_payload(raw: str) -> list[ThinkingPathItem]:
@@ -68,12 +94,40 @@ def _parse_paths_payload(raw: str) -> list[ThinkingPathItem]:
     return out
 
 
+async def classify_problem(
+    client: AsyncOpenAI,
+    settings: Settings,
+    question: str,
+) -> dict[str, str]:
+    user = prompts.PROBLEM_CLASSIFIER_USER_TEMPLATE.format(question=question.strip())
+    try:
+        completion = await client.chat.completions.create(
+            model=settings.model_chat,
+            messages=[
+                {"role": "system", "content": prompts.PROBLEM_CLASSIFIER_SYSTEM},
+                {"role": "user", "content": user},
+            ],
+            response_format={"type": "json_object"},
+            temperature=0.25,
+        )
+    except (APIError, APIConnectionError, RateLimitError) as e:
+        logger.exception("分类 Chat 调用失败")
+        raise DeepSeekPipelineError(f"问题分类失败：{e}") from e
+    raw = completion.choices[0].message.content or "{}"
+    return _parse_classification_payload(raw)
+
+
 async def generate_thinking_paths(
     client: AsyncOpenAI,
     settings: Settings,
     question: str,
+    profile: dict[str, str],
 ) -> list[ThinkingPathItem]:
-    user = prompts.PATH_GENERATOR_USER_TEMPLATE.format(question=question.strip())
+    profile_block = prompts.format_classification_block(profile)
+    user = prompts.PATH_GENERATOR_USER_TEMPLATE.format(
+        question=question.strip(),
+        profile_block=profile_block,
+    )
     try:
         completion = await client.chat.completions.create(
             model=settings.model_chat,
@@ -82,7 +136,7 @@ async def generate_thinking_paths(
                 {"role": "user", "content": user},
             ],
             response_format={"type": "json_object"},
-            temperature=0.35,
+            temperature=0.4,
         )
     except (APIError, APIConnectionError, RateLimitError) as e:
         logger.exception("Chat API 调用失败")
@@ -183,9 +237,10 @@ async def run_tech_pipeline(
     settings: Settings,
     question: str,
 ) -> tuple[list[ThinkingPathItem], list[PathReasonerRun], ReasonerResult]:
-    """Chat 多路径 → 每路径 R1 **并行** → Chat 综合。"""
+    """分类 → Chat 多路径 → 每路径 R1 并行 → Chat 综合。"""
     q = question.strip()
-    paths = await generate_thinking_paths(client, settings, q)
+    profile = await classify_problem(client, settings, q)
+    paths = await generate_thinking_paths(client, settings, q, profile)
     if not paths:
         raise DeepSeekPipelineError("未生成任何有效思考路径")
     coros = [
@@ -208,14 +263,18 @@ async def run_tech_pipeline(
 
 async def run_compare(client: AsyncOpenAI, settings: Settings, question: str) -> RunResponse:
     q = question.strip()
+
+    async def tech_paths_only() -> list[ThinkingPathItem]:
+        prof = await classify_problem(client, settings, q)
+        return await generate_thinking_paths(client, settings, q, prof)
+
     baseline_coro = run_reasoner(
         client,
         settings,
         system_prompt=prompts.REASONER_SYSTEM_BASELINE,
         user_prompt=prompts.REASONER_USER_BASELINE_TEMPLATE.format(question=q),
     )
-    paths_coro = generate_thinking_paths(client, settings, q)
-    baseline, paths = await asyncio.gather(baseline_coro, paths_coro)
+    baseline, paths = await asyncio.gather(baseline_coro, tech_paths_only())
     if not paths:
         raise DeepSeekPipelineError("对比模式：思考路径为空")
     coros = [
@@ -239,7 +298,7 @@ async def run_compare(client: AsyncOpenAI, settings: Settings, question: str) ->
             label="纯 R1（无思考路径预处理）", paths=None, path_runs=None, reasoner=baseline
         ),
         tech=BranchResult(
-            label="技术：多路径 × 并行 R1 + Chat 综合",
+            label="技术：分类 → 多路径 × 并行 R1 + Chat 综合",
             paths=paths,
             path_runs=path_runs,
             reasoner=final,
@@ -252,7 +311,7 @@ async def run_tech_only(client: AsyncOpenAI, settings: Settings, question: str) 
     return RunResponse(
         mode="tech_only",
         tech=BranchResult(
-            label="技术：多路径 × 并行 R1 + Chat 综合",
+            label="技术：分类 → 多路径 × 并行 R1 + Chat 综合",
             paths=paths,
             path_runs=path_runs,
             reasoner=final,

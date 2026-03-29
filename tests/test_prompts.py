@@ -20,3 +20,11 @@ def test_format_synthesis_traces_block():
 
 def test_format_synthesis_traces_empty():
     assert prompts.format_synthesis_traces_block([]) == "（无）"
+
+
+def test_format_classification_block():
+    b = prompts.format_classification_block(
+        {"domain_type": "A", "difficulty": "低", "thinking_stance": "先问是否可检验"}
+    )
+    assert "domain_type" in b
+    assert "低" in b

@@ -248,6 +248,82 @@ button.primary:disabled {
   white-space: pre-wrap;
 }
 
+.ds-card[data-branch="tech"] {
+  display: flex;
+  flex-direction: column;
+}
+
+.ds-tech-results-priority .ds-synthesis {
+  order: -5;
+}
+
+.ds-tech-results-priority .ds-path-rounds {
+  order: 2;
+}
+
+.ds-tech-results-priority .ds-classification-wrap {
+  order: 3;
+}
+
+.ds-tech-results-priority .ds-paths-wrap {
+  order: 4;
+}
+
+.ds-classification-wrap {
+  margin-bottom: 0.65rem;
+}
+
+.ds-details {
+  margin: 0.35rem 0;
+  border: 1px solid var(--ds-border);
+  border-radius: 8px;
+  padding: 0.25rem 0.5rem 0.45rem;
+  background: var(--ds-elevated);
+}
+
+.ds-details-summary {
+  cursor: pointer;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--ds-muted);
+  list-style: none;
+  padding: 0.25rem 0;
+}
+
+.ds-details-summary::-webkit-details-marker {
+  display: none;
+}
+
+.ds-details[open] > .ds-details-summary {
+  color: var(--ds-text);
+  margin-bottom: 0.35rem;
+}
+
+.ds-path-details-streaming {
+  border-color: color-mix(in srgb, var(--ds-border) 55%, var(--ds-accent) 45%);
+  box-shadow: 0 0 0 1px color-mix(in srgb, transparent 70%, var(--ds-accent) 30%);
+}
+
+.ds-inline-think-label {
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--ds-muted);
+  margin: 0.35rem 0 0.2rem;
+}
+
+.ds-think-body-nested {
+  max-height: min(28vh, 260px);
+  overflow: auto;
+  font-size: 0.8rem;
+  line-height: 1.55;
+  padding: 0.45rem 0.5rem;
+  border-radius: 6px;
+  border: 1px solid var(--ds-border);
+  background: var(--ds-think-bg);
+}
+
 .ds-path-rounds {
   display: flex;
   flex-direction: column;
