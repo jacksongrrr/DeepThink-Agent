@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>DeepThink Agent — 思考路径 + R1 对比</title>
+    <link rel="stylesheet" href="/assets/styles.css" />
+  </head>
+  <body>
+    <header class="hero">
+      <h1>DeepThink Agent</h1>
+      <p class="lead">
+        对比模式下<strong>单次 R1</strong>与<strong>技术管线</strong>（路径生成 → 多路径<strong>并行</strong> R1 → Chat
+        综合）<strong>同时</strong>流式输出；每条思考路径的 R1 也彼此并行。回答与小结使用本地
+        <code>static/vendor</code> 中的 <strong>marked + DOMPurify</strong> 做 Markdown 预览（不依赖外网 CDN）。
+      </p>
+    </header>
+
+    <main class="panel">
+      <section class="controls">
+        <label class="field">
+          <span>运行模式</span>
+          <select id="mode">
+            <option value="compare">对比：纯 R1 vs 多路径×R1+综合</option>
+            <option value="tech_only">仅技术：多路径×R1 + Chat 综合</option>
+            <option value="baseline_only">仅基线：纯 R1</option>
+          </select>
+        </label>
+        <label class="field grow">
+          <span>你的问题</span>
+          <textarea
+            id="question"
+            rows="4"
+            placeholder="例如：怎么赚钱？"
+          ></textarea>
+        </label>
+        <div class="actions">
+          <button type="button" id="run" class="primary">运行</button>
+          <span id="status" class="status" aria-live="polite"></span>
+        </div>
+      </section>
+
+      <section id="output" class="output hidden"></section>
+    </main>
+
+    <footer class="footer">
+      <p>密钥仅保存在本机 <code>.env</code>，不会上传至本仓库。调用直连 DeepSeek API。</p>
+    </footer>
+
+    <!-- 使用官方 UMD 构建并随仓库分发，避免仅依赖 CDN 时脚本被墙/拦截导致无法渲染、仍显示原始 # ** 等符号 -->
+    <script src="/assets/vendor/marked.umd.js" defer></script>
+    <script src="/assets/vendor/purify.min.js" defer></script>
+    <script src="/assets/app.js" defer></script>
+  </body>
+</html>
